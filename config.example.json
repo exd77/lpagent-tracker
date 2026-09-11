@@ -1,0 +1,39 @@
+{
+  "api_base": "https://api.lpagent.xyz/api",
+  "api_base_fallback": "https://api.lpagent.io/api",
+  "chain": "ROBINHOOD",
+  "poll_interval_s": 60,
+  "targets": [
+    {
+      "address": "0x0000000000000000000000000000000000000001",
+      "label": "example-target"
+    }
+  ],
+  "telegram": {
+    "token_env": "LPAGENT_TG_TOKEN",
+    "token_file": "/opt/lpagent-tracker/.token",
+    "chat_id": "123456789"
+  },
+  "alerts": {
+    "on_new_position": true,
+    "on_position_closed": true,
+    "on_liquidity_change": true,
+    "min_liquidity_change_pct": 15,
+    "startup_baseline": true,
+    "error_alerts": true
+  },
+  "http": {
+    "impersonate": "chrome133a",
+    "timeout_s": 30,
+    "max_retries": 3,
+    "retry_backoff_s": 5
+  },
+  "use_api_watcher": true,
+  "api_watcher_interval_s": 5,
+  "use_onchain_watcher": false,
+  "watcher_interval_s": 4,
+  "rpc_url": "https://<your-robinhood-rpc-endpoint>",
+  "rpc_url_fallback": "https://rpc.mainnet.chain.robinhood.com",
+  "state_file": "/opt/lpagent-tracker/state.json",
+  "log_file": "/opt/lpagent-tracker/monitor.log"
+}

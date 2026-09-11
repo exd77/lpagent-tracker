@@ -1,0 +1,14 @@
+[Unit]
+Description=LPAgent LP Position Monitor (Robinhood Chain)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/lpagent-tracker/venv/bin/python /opt/lpagent-tracker/monitor.py
+WorkingDirectory=/opt/lpagent-tracker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

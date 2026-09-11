@@ -1,0 +1,12 @@
+# Secrets — never commit
+.token
+*.token
+config.json
+state.json
+watcher_state.json
+monitor.log
+*.log
+__pycache__/
+*.pyc
+.venv/
+venv/
