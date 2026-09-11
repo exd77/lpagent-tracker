@@ -889,23 +889,29 @@ def poll_target_realtime(target: dict, state: dict) -> None:
         # closed positions -> rich CLOSE alert from historical endpoint
         for tid in prev:
             if tid not in current and alerts_cfg.get("on_position_closed"):
+                hist = _confirm_closed(state, addr, tid)
+                if not hist:
+                    continue  # debounce: transient disappearance or not yet in historical
                 log.info("[%s] REALTIME CLOSE %s", label, tid)
-                hist = _fetch_closed_position(addr, tid)
-                if hist:
-                    tg_send(close_alert_rich_html(target, hist),
-                            reply_markup=position_buttons(target, hist))
-                else:
-                    tg_send(close_alert_rich_html(target, {
-                        "tokenId": tid, "pairName": prev[tid].get("pairName"),
-                        "currentValue": prev[tid].get("currentValue"),
-                        "pnl": {}, "tickLower": DASH, "tickUpper": DASH,
-                    }), reply_markup=portfolio_button(addr))
+                tg_send(close_alert_rich_html(target, hist),
+                        reply_markup=position_buttons(target, hist))
 
-        tstate["positions"] = {
+        # reset pending-close counters for positions that are back/open
+        pending = tstate.setdefault("_pending_close", {})
+        for tid in list(pending):
+            if tid in current:
+                pending.pop(tid, None)
+
+        # keep pending-close entries so the debounce counter survives
+        new_positions = {
             tid: {"liquidity": p.get("liquidity"), "pairName": p.get("pairName"),
                   "currentValue": p.get("currentValue")}
             for tid, p in current.items()
         }
+        for tid, old in prev.items():
+            if tid not in current and tid in (tstate.get("_pending_close") or {}):
+                new_positions[tid] = old
+        tstate["positions"] = new_positions
         tstate["open_count"] = len(current)
         tstate["last_poll"] = int(time.time())
 
@@ -929,6 +935,45 @@ def _fetch_closed_position(owner: str, token_id: str) -> dict | None:
                 break
     except Exception as exc:  # noqa: BLE001
         log.error("historical fetch failed: %s", exc)
+    return None
+
+
+CLOSE_CONFIRM_CYCLES = 2   # position must be missing N consecutive polls before CLOSE alerts
+CLOSE_GIVEUP_CYCLES = 12   # drop silently after this many misses without a historical record
+
+
+def _confirm_closed(state: dict, addr: str, tid: str) -> dict | None:
+    """Return the historical record if tid qualifies as truly closed, else None.
+
+    Debounces transient indexer glitches where a position briefly
+    disappears from the opening endpoint: the tid must be missing for
+    CLOSE_CONFIRM_CYCLES consecutive polls AND have a record in the
+    historical endpoint. When the position reappears, the caller resets
+    the counter. After CLOSE_GIVEUP_CYCLES misses without a historical
+    record, the tid is dropped silently (no empty alert spam).
+    """
+    tstate = state.setdefault("targets", {}).setdefault(addr, {})
+    pending = tstate.setdefault("_pending_close", {})
+    n = pending.get(tid, 0) + 1
+
+    if n >= CLOSE_GIVEUP_CYCLES:
+        log.info("[%s] giving up on close detection for %s (no historical record)",
+                 tstate.get("label") or short_addr(addr), tid)
+        pending.pop(tid, None)
+        return None
+    if n < CLOSE_CONFIRM_CYCLES:
+        pending[tid] = n
+        return None
+
+    # debounce window passed -> verify against historical
+    hist = _fetch_closed_position(addr, tid)
+    if hist:
+        pending.pop(tid, None)
+        return hist
+    # no historical record yet -> likely still closing on the indexer
+    pending[tid] = n
+    log.info("[%s] close pending for %s: not yet in historical (n=%d)",
+             tstate.get("label") or short_addr(addr), tid, n)
     return None
 
 
@@ -995,24 +1040,30 @@ def poll_target(target: dict, state: dict) -> None:
         for tid, old in prev.items():
             if tid not in current and not first_seen:
                 if alerts_cfg.get("on_position_closed"):
+                    hist = _confirm_closed(state, addr, tid)
+                    if not hist:
+                        continue  # debounce: transient disappearance or not yet in historical
                     log.info("[%s] CLOSED position %s", label, tid)
-                    hist = _fetch_closed_position(addr, tid)
-                    if hist:
-                        tg_send(close_alert_rich_html(target, hist),
-                                reply_markup=position_buttons(target, hist))
-                    else:
-                        tg_send(close_alert_rich_html(target, {
-                            "tokenId": tid,
-                            "pairName": old.get("pairName"),
-                            "currentValue": old.get("currentValue"),
-                            "pnl": {},
-                            "tickLower": DASH, "tickUpper": DASH,
-                        }), reply_markup=portfolio_button(addr))
+                    tg_send(close_alert_rich_html(target, hist),
+                            reply_markup=position_buttons(target, hist))
+
+        # keep pending-close entries in state so the debounce counter survives
+        # across cycles until confirmed closed or the position reappears
+        for tid, old in prev.items():
+            if tid not in current:
+                if tstate.get("_pending_close", {}).get(tid) is not None:
+                    new_state_positions[tid] = old
 
         tstate["positions"] = new_state_positions
         tstate["initialized"] = True
         tstate["last_poll"] = int(time.time())
         tstate["open_count"] = len(current)
+
+        # reset pending-close counters for positions that are back/open
+        pending = tstate.setdefault("_pending_close", {})
+        for tid in list(pending):
+            if tid in current:
+                pending.pop(tid, None)
 
 
 def pair_of(pos) -> str:
