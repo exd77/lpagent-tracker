@@ -293,7 +293,7 @@ def position_alert_html(target, pos, event: str) -> str:
     lines = [
         f"{icon} <b>{tags.get(event, event)} \u2014 {pair}</b>",
         f"\U0001f3af {identity} \u00b7 <code>{short_addr(owner)}</code>",
-        f"<code>{token_id}</code>",
+        f"CA: <code>{pos.get('pool') or token_id}</code>",
         "",
         f"\U0001f4b0 <b>Value</b>: {fmt_usd(pos.get('currentValue'))}",
     ]
@@ -755,7 +755,7 @@ def close_alert_rich_html(target, hist_pos) -> str:
     lines = [
         f"\U0001f534 <b>CLOSED \u2014 {hist_pos.get('pairName', '?')}</b>",
         f"\U0001f3af {identity} \u00b7 <code>{short_addr(owner)}</code>",
-        f"<code>{hist_pos.get('tokenId', '?')}</code>",
+        f"CA: <code>{hist_pos.get('pool') or hist_pos.get('tokenId', '?')}</code>",
         "",
         f"\u23f1 <b>Age (hold)</b>: {fmt_age(age_h)}",
         f"\U0001f4e5 <b>Invested</b>: {fmt_usd(hist_pos.get('inputValue'))}",
